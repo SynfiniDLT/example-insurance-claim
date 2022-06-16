@@ -1,0 +1,52 @@
+module Data
+where
+
+data CustomerDetails = CustomerDetails
+  with
+    customerID: Text
+    fullName: Text
+    address: Text
+  deriving (Eq, Show)
+
+data VehicalDetails = VehicalDetails
+  with
+    rego: Text 
+    model: Text
+    year : Int
+  deriving (Eq, Show)
+
+data ExcessLevel = NA |Excess500 | Excess1000 | Excess1200 deriving (Eq, Show)
+
+data SettlementLevel = Settled  | Paid deriving (Eq, Show)
+
+instance Enum ExcessLevel where
+  fromEnum NA = 0    
+  fromEnum Excess500 = 500
+  fromEnum Excess1000 = 1000
+  fromEnum Excess1200 = 1200
+
+  toEnum 500 = Excess500
+  toEnum 1000 = Excess1000
+  toEnum 1200 = Excess1200
+  toEnum _ = Excess1200
+
+
+data Fact = Fact
+  with 
+    insurer: Party
+    paymentParty : Optional Party
+    rego : Text
+    name: Text
+    excess : ExcessLevel
+    location: Text
+    description: Text
+    repairCost: Int
+  deriving (Eq, Show)
+
+
+data ClaimFact = ClaimFact
+  with 
+    insurer: Party
+    rego : Text
+    name: Text
+  deriving (Eq, Show)

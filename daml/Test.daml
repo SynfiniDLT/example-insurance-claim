@@ -1,0 +1,310 @@
+module Test
+where
+
+--------------------------------------------------------------------------------
+
+import DA.Date
+import Daml.Script
+import Data
+import Main
+
+--------------------------------------------------------------------------------
+
+test1 : Script ()
+test1 = script do
+
+-- setup parties 
+
+  cust <- allocatePartyWithHint "Customer" (PartyIdHint "Customer")
+  ins_claim_A <- allocatePartyWithHint "Ins_Claim_A" (PartyIdHint "Ins_Claim_A")
+  ins_claim_B <- allocatePartyWithHint "Ins_Claim_B" (PartyIdHint "Ins_Claim_B")
+  ins_claim_C <- allocatePartyWithHint "Ins_Claim_C" (PartyIdHint "Ins_Claim_C")
+
+  ins_pay_A <- allocatePartyWithHint "Ins_Pay_A" (PartyIdHint "Ins_Pay_A")
+  ins_pay_B <- allocatePartyWithHint "Ins_Pay_B" (PartyIdHint "Ins_Pay_B")
+  ins_pay_C <- allocatePartyWithHint "Ins_Pay_C" (PartyIdHint "Ins_Pay_C")
+
+  repairer <- allocatePartyWithHint "Repairer"(PartyIdHint "Repairer")
+
+-- create customer and policy
+
+  _customer <- submit cust 
+          do createCmd Customer 
+              with 
+                customer = cust
+                customerDetails = CustomerDetails with customerID = "CUST001", fullName = "John Smith", address ="20 Bridger Street"
+
+
+  _policyRequest <- submit cust 
+          do exerciseCmd _customer RequestPolicy 
+              with 
+                insurer = ins_claim_A
+                startDate =  (date 2019 Oct 1)
+                endDate =  (date 2020 Oct 1) 
+                excess= Excess500
+                carDetails = VehicalDetails with rego = "AAA001", model="Mazda 3", year = 2020
+
+  _policy <- submit ins_claim_A 
+          do exerciseCmd _policyRequest ApprovePolicy 
+              with 
+                policyID = "POL001"
+                paymentParty = ins_pay_A
+
+  
+
+-- customer submit a claim
+  _requestClaim <- submit cust 
+          do exerciseCmd _customer LodgeClaim 
+              with 
+                policy = _policy
+                myRego="AAA001"
+                location="SYDNEY"
+                description="I was hit from behind"
+                otherDrivers = [(ClaimFact with insurer = ins_claim_B, rego = "BBB001", name= "Bob"), ClaimFact with insurer = ins_claim_C, rego = "ABC002", name= "Bruce"]
+
+-- insurance company claim department accepted the claim
+  _claim <- submit ins_claim_A 
+          do exerciseCmd _requestClaim AcceptClaimRequest 
+              with 
+                repairer = repairer
+
+-- involved insurance companies add facts to the claim
+  _claim2 <- submit ins_claim_B 
+          do exerciseCmd _claim AddFact 
+              with 
+                insurer = ins_claim_B
+                rego = "BBB001"
+                excess = Excess500
+                name= "Bob Brown" 
+                location = "SYDNEY" 
+                description="I hit a car in front of me"
+                paymentParty =  ins_pay_B
+
+  _claim3 <- submit ins_claim_C 
+          do exerciseCmd _claim2 AddFact 
+              with 
+                insurer = ins_claim_C 
+                rego = "CCC001" 
+                excess = Excess1200 
+                name= "Charle" 
+                location = "SYDNEY" 
+                description="A car with Rego plate BBB001 scrtached my side door" 
+                paymentParty =  ins_pay_C
+
+-- repairer add costs for the insurance companies 
+  _claim11 <- submit repairer 
+          do exerciseCmd _claim3 AddCost 
+              with 
+                cost = 2000
+                ins = ins_claim_A
+
+  _claim12 <- submit repairer 
+          do exerciseCmd _claim11 AddCost 
+              with 
+                cost = 1000
+                ins = ins_claim_B
+
+  _claim13 <- submit repairer 
+          do exerciseCmd _claim12 AddCost 
+              with 
+                cost = 500
+                ins = ins_claim_C
+
+  
+-- insurance company agrees on who should pay for the cost i.e. whose is at fault 
+-- in this example, everyone agree it is Insurance Company B's customer at fault
+  _claim21 <- submit ins_claim_A do exerciseCmd _claim13 AgreeOnWhoToPay 
+                                      with 
+                                        insur = ins_claim_A
+                                        atFaultParty = ins_claim_B
+
+  case _claim21 of
+    Left a -> do assert (False) 
+    Right b -> do 
+                _claim22 <- submit ins_claim_B do exerciseCmd b AgreeOnWhoToPay 
+                                                    with 
+                                                      insur = ins_claim_B
+                                                      atFaultParty = ins_claim_B
+                case _claim22 of 
+                    Left a -> do 
+                      assert (False)
+                    Right b -> do
+                      _claimSettlementRequest<- submit ins_claim_C do exerciseCmd b AgreeOnWhoToPay 
+                                                                        with 
+                                                                          insur = ins_claim_C
+                                                                          atFaultParty = ins_claim_B
+                      case _claimSettlementRequest of 
+                        Left a -> do 
+
+                          -- Payment instruction created
+                          _claimSettlement <- submit ins_claim_B do exerciseCmd a AcceptClaimSettlementRequest 
+                                                                        
+                          
+                          pure()                         
+                        
+                        Right b -> do
+                          assert (False)
+                          pure()
+
+    -- with the payment instruction, other insurance company can now accept it and get payment
+  [(_payment, t)] <- query @PaymentInstruction ins_pay_C
+
+  _payment <- submit ins_pay_C do exerciseCmd _payment Accept
+
+  Some payment <- queryContractId @InsurancePayment ins_pay_C _payment 
+
+  assert (payment.amount == 500)
+  
+  pure()
+                          
+test2 : Script ()
+test2 = script do 
+ 
+-- setup parties 
+
+  cust <- allocatePartyWithHint "Customer" (PartyIdHint "Customer")
+  ins_claim_A <- allocatePartyWithHint "Ins_Claim_A" (PartyIdHint "Ins_Claim_A")
+  ins_claim_B <- allocatePartyWithHint "Ins_Claim_B" (PartyIdHint "Ins_Claim_B")
+  ins_claim_C <- allocatePartyWithHint "Ins_Claim_C" (PartyIdHint "Ins_Claim_C")
+
+  ins_pay_A <- allocatePartyWithHint "Ins_Pay_A" (PartyIdHint "Ins_Pay_A")
+  ins_pay_B <- allocatePartyWithHint "Ins_Pay_B" (PartyIdHint "Ins_Pay_B")
+  ins_pay_C <- allocatePartyWithHint "Ins_Pay_C" (PartyIdHint "Ins_Pay_C")
+
+  repairer <- allocatePartyWithHint "Repairer"(PartyIdHint "Repairer")
+
+-- create customer and policy
+
+  _customer <- submit cust 
+          do createCmd Customer 
+              with 
+                customer = cust
+                customerDetails = CustomerDetails with customerID = "CUST001", fullName = "John Smith", address ="20 Bridger Street"
+
+
+  _policyRequest <- submit cust 
+          do exerciseCmd _customer RequestPolicy 
+              with 
+                insurer = ins_claim_A
+                startDate =  (date 2019 Oct 1)
+                endDate =  (date 2020 Oct 1) 
+                excess= Excess500
+                carDetails = VehicalDetails with rego = "AAA001", model="Mazda 3", year = 2020
+
+  _policy <- submit ins_claim_A 
+          do exerciseCmd _policyRequest ApprovePolicy 
+              with 
+                policyID = "POL001"
+                paymentParty = ins_pay_A
+
+ 
+-- customer submit a claim
+  _requestClaim <- submit cust 
+          do exerciseCmd _customer LodgeClaim 
+              with 
+                policy = _policy
+                myRego="AAA001"
+                location="SYDNEY"
+                description="I was hit from behind"
+                otherDrivers = [(ClaimFact with insurer = ins_claim_B, rego = "BBB001", name= "Bob"), ClaimFact with insurer = ins_claim_C, rego = "ABC002", name= "Bruce"]
+
+-- insurance company claim department accepted the claim
+  _claim <- submit ins_claim_A 
+          do exerciseCmd _requestClaim AcceptClaimRequest 
+              with 
+                repairer = repairer
+
+-- involved insurance companies add facts to the claim
+  _claim2 <- submit ins_claim_B 
+          do exerciseCmd _claim AddFact 
+              with 
+                insurer = ins_claim_B
+                rego = "BBB001"
+                excess = Excess500
+                name= "Bob Brown" 
+                location = "SYDNEY" 
+                description="I hit a car in front of me"
+                paymentParty =  ins_pay_B
+
+  _claim3 <- submit ins_claim_C 
+          do exerciseCmd _claim2 AddFact 
+              with 
+                insurer = ins_claim_C 
+                rego = "CCC001" 
+                excess = Excess1200 
+                name= "Charle" 
+                location = "SYDNEY" 
+                description="A car with Rego plate BBB001 scrtached my side door" 
+                paymentParty =  ins_pay_C
+
+-- repairer add costs for the insurance companies 
+  _claim11 <- submit repairer 
+          do exerciseCmd _claim3 AddCost 
+              with 
+                cost = 2000
+                ins = ins_claim_A
+
+  _claim12 <- submit repairer 
+          do exerciseCmd _claim11 AddCost 
+              with 
+                cost = 1000
+                ins = ins_claim_B
+
+  _claim13 <- submit repairer 
+          do exerciseCmd _claim12 AddCost 
+              with 
+                cost = 500
+                ins = ins_claim_C
+
+
+
+  
+-- insurance company agrees on who should pay for the cost i.e. whose is at fault 
+-- in this example, everyone agree it is Insurance Company B's customer at fault
+  _claim21 <- submit ins_claim_A do exerciseCmd _claim13 AgreeOnWhoToPay 
+                                      with 
+                                        insur = ins_claim_A
+                                        atFaultParty = ins_claim_B
+  
+  case _claim21 of
+    Left a -> do assert False 
+    Right b -> do 
+              -- company B disagree with the claim and atFaultParty is reset to A
+                _claim22 <- submit ins_claim_B do exerciseCmd b AgreeOnWhoToPay 
+                                                    with 
+                                                      insur = ins_claim_B
+                                                      atFaultParty = ins_claim_A
+                case _claim22 of 
+                    Left a -> do 
+                      assert False
+                    Right b -> do
+                      _claimSettlementRequest<- submit ins_claim_C do exerciseCmd b AgreeOnWhoToPay 
+                                                                        with 
+                                                                          insur = ins_claim_C
+                                                                          atFaultParty = ins_claim_A
+                          
+                      pure()                         
+
+                          
+
+
+  
+
+
+  
+
+
+    
+
+
+
+
+  
+
+
+  
+
+
+    
+
+

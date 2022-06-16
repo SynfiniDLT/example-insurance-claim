@@ -1,0 +1,51 @@
+module Setup
+where
+
+--------------------------------------------------------------------------------
+
+import DA.Date
+import Daml.Script
+import Data
+import Main
+
+
+setup : Script (ContractId Policy)
+setup = script do
+
+  cust <- allocatePartyWithHint "Customer" (PartyIdHint "Customer")
+  ins_claim_A <- allocatePartyWithHint "Ins_Claim_A" (PartyIdHint "Ins_Claim_A")
+  ins_claim_B <- allocatePartyWithHint "Ins_Claim_B" (PartyIdHint "Ins_Claim_B")
+  ins_claim_C <- allocatePartyWithHint "Ins_Claim_C" (PartyIdHint "Ins_Claim_C")
+
+  ins_pay_A <- allocatePartyWithHint "Ins_Pay_A" (PartyIdHint "Ins_Pay_A")
+  ins_pay_B <- allocatePartyWithHint "Ins_Pay_B" (PartyIdHint "Ins_Pay_B")
+  ins_pay_C <- allocatePartyWithHint "Ins_Pay_C" (PartyIdHint "Ins_Pay_C")
+
+  repairer <- allocatePartyWithHint "Repairer"(PartyIdHint "Repairer")
+
+-- create customer and policy
+
+  _customer <- submit cust 
+          do createCmd Customer 
+              with 
+                customer = cust
+                customerDetails = CustomerDetails with customerID = "CUST001", fullName = "John Smith", address ="20 Bridger Street"
+
+
+  _policyRequest <- submit cust 
+          do exerciseCmd _customer RequestPolicy 
+              with 
+                insurer = ins_claim_A
+                startDate =  (date 2019 Oct 1)
+                endDate =  (date 2020 Oct 1) 
+                excess= Excess500
+                carDetails = VehicalDetails with rego = "ASX005", model="BMW M3", year = 2020
+
+  submit ins_claim_A 
+          do exerciseCmd _policyRequest ApprovePolicy 
+              with 
+                policyID = "POL001"
+                paymentParty = ins_pay_A
+
+
+  

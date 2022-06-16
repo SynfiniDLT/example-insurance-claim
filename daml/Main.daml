@@ -1,0 +1,388 @@
+module Main
+where
+
+--------------------------------------------------------------------------------
+
+import DA.List
+import DA.Optional
+import DA.Text
+import Data
+
+import DA.Foldable
+  ( mapA_
+  )
+import DA.Set
+
+--------------------------------------------------------------------------------
+
+template Customer
+  with
+    customer: Party
+    customerDetails: CustomerDetails
+  where
+    signatory customer
+
+    nonconsuming choice RequestPolicy : ContractId PolicyRequest 
+      with 
+        insurer: Party
+        startDate : Date
+        endDate : Date
+        carDetails : VehicalDetails
+        excess : ExcessLevel  
+      controller customer
+        do create PolicyRequest 
+                    with 
+                      customer = customer
+                      insurer = insurer
+                      startDate = startDate
+                      endDate
+                      carDetails
+                      excess
+                      customerDetails
+
+    nonconsuming choice LodgeClaim: ContractId FNOLRequest 
+        with 
+          policy: ContractId Policy
+          myRego : Text
+          location : Text
+          description: Text
+          otherDrivers :[ClaimFact]
+        controller customer
+        do 
+          policyData <- fetch policy
+          now <- getTime
+          let myFact = Fact with 
+                          insurer = policyData.insurer
+                          paymentParty= Some policyData.paymentParty
+                          rego = myRego
+                          excess = policyData.excessLevel
+                          name = this.customerDetails.fullName
+                          location = location
+                          description = description
+                          repairCost = 0
+                          
+          let otherFacts:[Fact]= map(\i -> Fact with 
+                                            insurer = i.insurer
+                                            paymentParty = None
+                                            excess = NA
+                                            rego = i.rego
+                                            name =i.name
+                                            location = ""
+                                            description = ""
+                                            repairCost = 0) otherDrivers 
+
+          let insurers = map(\i -> i.insurer ) otherDrivers
+          create FNOLRequest 
+            with 
+              insurer = policyData.insurer
+              policy = policy
+              facts = myFact::otherFacts
+              involvedInsurer = insurers
+              customer = customer
+
+
+template PolicyRequest
+  with
+    customer: Party
+    insurer: Party
+    startDate: Date
+    endDate: Date
+    carDetails: VehicalDetails
+    customerDetails: CustomerDetails
+    excess: ExcessLevel
+  where
+    signatory customer
+    observer insurer
+
+    choice ApprovePolicy : ContractId Policy 
+        with 
+        policyID: Text
+        paymentParty : Party
+      controller insurer 
+        do 
+          create Policy 
+            with 
+              policyId = policyID
+              customer; insurer
+              paymentParty
+              startDate
+              endDate
+              carDetails
+              excessLevel = excess
+              customerDetails = customerDetails
+        
+        
+    choice RejectPolicy : ()
+      controller insurer
+        do return ()
+
+template Policy
+  with
+    customer: Party
+    insurer: Party
+    paymentParty : Party
+    policyId: Text
+    carDetails : VehicalDetails
+    startDate: Date
+    endDate: Date
+    excessLevel: ExcessLevel
+    customerDetails: CustomerDetails
+  where
+    signatory customer, insurer
+
+    controller customer can 
+      Cancel: () do return ()
+
+    controller insurer can
+      Revoke: () do return ()
+      
+template FNOLRequest
+  with
+    insurer : Party
+    policy: ContractId Policy
+    facts: [Fact]
+    involvedInsurer: [Party]
+    customer: Party
+  where
+    signatory customer
+    observer insurer
+    
+    choice AcceptClaimRequest : ContractId FNOL
+        with
+          repairer : Party
+        controller insurer 
+        do
+          create FNOL with 
+              customer = customer
+              policy = policy
+              claimInsurance= insurer
+              involvedInsurer = insurer::involvedInsurer 
+              facts = facts
+              agreedInsurer = []
+              repairer = repairer
+              claimAgainstParty = None
+
+template FNOL
+  with
+    customer : Party
+    repairer : Party
+    policy: ContractId Policy
+    claimInsurance : Party
+    involvedInsurer : [Party]
+    facts: [Fact]
+    agreedInsurer : [Party]
+    claimAgainstParty : Optional Party
+  where
+    signatory claimInsurance,customer 
+    observer involvedInsurer, repairer    
+
+    choice AddFact : ContractId FNOL 
+      with
+        insurer: Party
+        paymentParty : Party
+        rego: Text
+        name: Text
+        location : Text
+        description: Text
+        excess: ExcessLevel
+      controller insurer
+        do
+          assertMsg "Unable to modify agreed claim" (agreedInsurer /= sort involvedInsurer)
+          assertMsg "Invalid rego. Lenghth should be equal or less than 6 characters/digits" (DA.Text.length rego <= 6)
+
+          if isNone (findIndex(\i -> i.insurer == insurer) facts) then 
+            do
+            let fact = Fact with 
+                    insurer
+                    paymentParty = Some paymentParty
+                    rego 
+                    name
+                    location 
+                    description
+                    repairCost = 0
+                    excess = excess 
+
+            create this with facts = fact :: facts, agreedInsurer=[]
+          else
+            do              
+            create this with facts = map(\i -> if i.insurer == insurer then Fact 
+                                                                        with 
+                                                                          insurer = insurer
+                                                                          paymentParty = Some paymentParty
+                                                                          rego = rego
+                                                                          name = name
+                                                                          excess = excess
+                                                                          location = location
+                                                                          description = description
+                                                                          repairCost =i.repairCost
+                                                                else i ) facts, agreedInsurer=[]
+    choice AddCost : ContractId FNOL 
+      with 
+        cost : Int
+        ins : Party
+      controller repairer
+        do
+        assertMsg "Unable to modify agreed claim" (agreedInsurer /= sort involvedInsurer)
+        assertMsg "Invalid cost. Cost should be larger than 100 and smaller than 500,000" (cost > 100 || cost < 500000 )
+
+        let f = map(\i -> if (i.insurer==ins) then i with repairCost = cost else i ) this.facts
+        create this with facts = f, agreedInsurer=[]
+          
+    choice AgreeOnWhoToPay : Either (ContractId ClaimSettlementRequest) (ContractId FNOL)
+      with 
+        insur: Party
+        atFaultParty: Party
+      controller insur
+        do        
+        assertMsg "Unable to modify agreed claim" (agreedInsurer /= sort involvedInsurer)
+        assertMsg ("Selected party " <> show atFaultParty <> "must from involved parties" <> show involvedInsurer) (isSome (elemIndex atFaultParty involvedInsurer))
+        assertMsg ("Payment party missing") (isNone (findIndex(\i -> isNone i.paymentParty ) facts))
+
+
+        if  (isNone claimAgainstParty || atFaultParty/= fromSome claimAgainstParty)  then
+          do
+              c <- create this 
+                            with 
+                              agreedInsurer = [insur]
+                              claimAgainstParty = Some atFaultParty
+              return (Right c)            
+        else 
+          do
+          if isNone(elemIndex(insur) agreedInsurer) then
+            do 
+            let myagreedInsurer = sort (insur :: agreedInsurer)
+
+            a <- create this with agreedInsurer = myagreedInsurer
+
+            if (myagreedInsurer == involvedInsurer) then
+              do
+              let Some index = findIndex(\i -> i.insurer ==  fromSome claimAgainstParty) facts
+
+              b <- create ClaimSettlementRequest 
+                              with 
+                                facts = facts
+                                atFaultPair= (atFaultParty, fromSome (facts !! index).paymentParty )
+                                claimInsurance = this.claimInsurance 
+                                customer=this.customer
+                                repairer = repairer                                     
+              return (Left b)
+            else
+              do          
+              return (Right a)
+          else 
+              do          
+              assertMsg "insurer already agreed " (1==2)
+              c <- create this with agreedInsurer = sort (insur :: agreedInsurer)
+              return (Right c)
+
+
+
+template ClaimSettlementRequest
+  with 
+    facts : [Fact]
+    atFaultPair : (Party, Party)
+    claimInsurance: Party
+    customer: Party
+    repairer: Party
+  where
+      signatory claimInsurance
+      observer fst atFaultPair, snd atFaultPair
+
+      choice AcceptClaimSettlementRequest : ContractId ClaimSettlement
+        controller fst atFaultPair
+        do          
+          -- find the access amount
+          let index = findIndex (\i -> i.insurer == fst atFaultPair) facts
+          let fact = facts !! fromSome index
+
+          i1 <- do create PaymentInstruction 
+                    with  
+                      issuer = fst atFaultPair
+                      payTo = claimInsurance
+                      amount = fromEnum fact.excess
+                      customerName = show claimInsurance
+                      comment = "Customer Excess"
+                      paymentParty = snd atFaultPair
+
+          i2 <- mapA(\i ->    
+                  do 
+                    create PaymentInstruction with 
+                      payTo = fromSome i.paymentParty
+                      amount = i.repairCost
+                      customerName = show repairer <> " - " <>show i.insurer
+                      issuer = fst atFaultPair
+                      comment = "Repair cost for " <> show i.insurer 
+                      paymentParty = snd atFaultPair
+
+                  ) facts
+
+          let involvedParties:[Party] = concat (mapA(\i -> [i.insurer,fromSome i.paymentParty] ) facts)
+          create ClaimSettlement with 
+                        claimSettlementRequest = this
+                        settled = Settled
+                        repairer = repairer
+                        paymentParty = snd atFaultPair
+                        invoices = i1::i2
+                        involedParties = fromList (customer :: involvedParties)
+
+
+template ClaimSettlement
+  with 
+      claimSettlementRequest: ClaimSettlementRequest
+      settled : SettlementLevel
+      repairer : Party
+      paymentParty : Party
+      involedParties : Set Party 
+      invoices : [ContractId PaymentInstruction]
+  where
+      signatory fst claimSettlementRequest.atFaultPair, claimSettlementRequest.claimInsurance
+      observer repairer, involedParties
+
+      choice CreatePayment : ContractId ClaimSettlement
+        controller paymentParty
+        do
+          mapA_(\i -> 
+                      do 
+                        t <- fetch i 
+                        create InsurancePayment with 
+                                        to = t.payTo
+                                        from = paymentParty
+                                        amount = t.amount
+                                        payerName = show paymentParty
+                        
+                        ) invoices
+
+          create this with settled = Paid
+
+template InsurancePayment
+  with
+    from: Party
+    to: Party
+    payerName: Text
+    amount: Int
+  where
+    signatory to
+    observer from
+
+template PaymentInstruction
+  with
+    issuer: Party
+    payTo: Party
+    customerName: Text
+    amount: Int
+    paymentParty : Party
+    comment: Text
+  where
+    signatory issuer
+    observer payTo, paymentParty
+
+    choice Accept : ContractId InsurancePayment
+      controller payTo
+      do
+        create InsurancePayment 
+            with 
+              from = paymentParty
+              to = payTo
+              payerName = show paymentParty
+              amount = amount
+
