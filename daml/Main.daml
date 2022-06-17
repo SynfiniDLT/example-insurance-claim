@@ -28,7 +28,8 @@ template Customer
         startDate : Date
         endDate : Date
         carDetails : VehicalDetails
-        excess : ExcessLevel  
+        excess : ExcessLevel
+
       controller customer
         do create PolicyRequest 
                     with 
@@ -292,13 +293,13 @@ template ClaimSettlementRequest
         controller fst atFaultPair
         do          
           -- find the access amount
-          let index = findIndex (\i -> i.insurer == fst atFaultPair) facts
-          let fact = facts !! fromSome index
+          let Some index = findIndex (\i -> i.insurer == claimInsurance) facts
+          let fact = facts !! index
 
           i1 <- do create PaymentInstruction 
                     with  
                       issuer = fst atFaultPair
-                      payTo = claimInsurance
+                      payTo = fromSome fact.paymentParty
                       amount = fromEnum fact.excess
                       customerName = show claimInsurance
                       comment = "Customer Excess"
