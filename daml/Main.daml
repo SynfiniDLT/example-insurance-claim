@@ -1,3 +1,6 @@
+-- Copyright (c) 2022 ASX Operations Pty Ltd. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
 module Main
 where
 
@@ -7,6 +10,7 @@ import DA.List
 import DA.Optional
 import DA.Text
 import Data
+import DA.Numeric
 
 import DA.Foldable
   ( mapA_
@@ -60,7 +64,6 @@ template Customer
                           name = this.customerDetails.fullName
                           location = location
                           description = description
-                          repairCost = 0
                           
           let otherFacts:[Fact]= map(\i -> Fact with 
                                             insurer = i.insurer
@@ -69,8 +72,7 @@ template Customer
                                             rego = i.rego
                                             name =i.name
                                             location = ""
-                                            description = ""
-                                            repairCost = 0) otherDrivers 
+                                            description = "") otherDrivers 
 
           let insurers = map(\i -> i.insurer ) otherDrivers
           create FNOLRequest 
@@ -130,12 +132,15 @@ template Policy
     customerDetails: CustomerDetails
   where
     signatory customer, insurer
+    ensure endDate > startDate
 
-    controller customer can 
-      Cancel: () do return ()
+    choice Cancel : ()
+      controller customer
+      do return ()
 
-    controller insurer can
-      Revoke: () do return ()
+    choice Revoke : ()
+      controller insurer
+      do return ()
       
 template FNOLRequest
   with
@@ -157,9 +162,9 @@ template FNOLRequest
               customer = customer
               policy = policy
               claimInsurance= insurer
-              involvedInsurer = insurer::involvedInsurer 
-              facts = facts
-              agreedInsurer = []
+              involvedInsurer = fromList (insurer::involvedInsurer)
+              factsAndCost = map(\i -> (i,0.00)) facts
+              agreedInsurer = empty
               repairer = repairer
               claimAgainstParty = None
 
@@ -169,9 +174,9 @@ template FNOL
     repairer : Party
     policy: ContractId Policy
     claimInsurance : Party
-    involvedInsurer : [Party]
-    facts: [Fact]
-    agreedInsurer : [Party]
+    involvedInsurer : Set Party
+    factsAndCost: [(Fact, Numeric 2)]
+    agreedInsurer : Set Party
     claimAgainstParty : Optional Party
   where
     signatory claimInsurance,customer 
@@ -179,55 +184,38 @@ template FNOL
 
     choice AddFact : ContractId FNOL 
       with
-        insurer: Party
-        paymentParty : Party
-        rego: Text
-        name: Text
-        location : Text
-        description: Text
-        excess: ExcessLevel
-      controller insurer
+        fact : Fact
+      controller fact.insurer
         do
-          assertMsg "Unable to modify agreed claim" (agreedInsurer /= sort involvedInsurer)
-          assertMsg "Invalid rego. Lenghth should be equal or less than 6 characters/digits" (DA.Text.length rego <= 6)
+          assertMsg "Unable to modify agreed claim" (agreedInsurer /= involvedInsurer)
+          assertMsg "Invalid rego. Lenghth should be equal or less than 6 characters/digits" (DA.Text.length fact.rego <= 6)
 
-          if isNone (findIndex(\i -> i.insurer == insurer) facts) then 
+          if isNone (find(\i -> (fst i).insurer == fact.insurer) factsAndCost) then 
             do
-            let fact = Fact with 
-                    insurer
-                    paymentParty = Some paymentParty
-                    rego 
-                    name
-                    location 
-                    description
-                    repairCost = 0
-                    excess = excess 
-
-            create this with facts = fact :: facts, agreedInsurer=[]
+            create this with factsAndCost = (fact,0.00) :: this.factsAndCost, agreedInsurer=empty
           else
             do              
-            create this with facts = map(\i -> if i.insurer == insurer then Fact 
+            create this with factsAndCost = map(\i -> if (fst i).insurer == fact.insurer then (Fact 
                                                                         with 
-                                                                          insurer = insurer
-                                                                          paymentParty = Some paymentParty
-                                                                          rego = rego
-                                                                          name = name
-                                                                          excess = excess
-                                                                          location = location
-                                                                          description = description
-                                                                          repairCost =i.repairCost
-                                                                else i ) facts, agreedInsurer=[]
+                                                                          insurer = fact.insurer
+                                                                          paymentParty = fact.paymentParty
+                                                                          rego = fact.rego
+                                                                          name = fact.name
+                                                                          excess = fact.excess
+                                                                          location = fact.location
+                                                                          description = fact.description
+                                                                        , snd i) 
+                                                                else i ) factsAndCost, agreedInsurer=empty
     choice AddCost : ContractId FNOL 
       with 
-        cost : Int
+        cost : Numeric 2
         ins : Party
       controller repairer
         do
-        assertMsg "Unable to modify agreed claim" (agreedInsurer /= sort involvedInsurer)
-        assertMsg "Invalid cost. Cost should be larger than 100 and smaller than 500,000" (cost > 100 || cost < 500000 )
+        assertMsg "Unable to modify agreed claim" (agreedInsurer /= involvedInsurer)
 
-        let f = map(\i -> if (i.insurer==ins) then i with repairCost = cost else i ) this.facts
-        create this with facts = f, agreedInsurer=[]
+        let f = map(\i -> if ((fst i).insurer==ins) then (fst i, cost) else i ) this.factsAndCost
+        create this with factsAndCost = f, agreedInsurer= empty
           
     choice AgreeOnWhoToPay : Either (ContractId ClaimSettlementRequest) (ContractId FNOL)
       with 
@@ -235,52 +223,48 @@ template FNOL
         atFaultParty: Party
       controller insur
         do        
-        assertMsg "Unable to modify agreed claim" (agreedInsurer /= sort involvedInsurer)
-        assertMsg ("Selected party " <> show atFaultParty <> "must from involved parties" <> show involvedInsurer) (isSome (elemIndex atFaultParty involvedInsurer))
-        assertMsg ("Payment party missing") (isNone (findIndex(\i -> isNone i.paymentParty ) facts))
+        assertMsg "Unable to modify agreed claim" (agreedInsurer /= involvedInsurer)
+        assertMsg ("Selected party " <> show atFaultParty <> "must from involved parties" <> show involvedInsurer) (member atFaultParty involvedInsurer)
+        assertMsg ("Payment party missing") (isNone (findIndex(\i -> isNone (fst i).paymentParty ) factsAndCost))
 
 
         if  (isNone claimAgainstParty || atFaultParty/= fromSome claimAgainstParty)  then
           do
               c <- create this 
                             with 
-                              agreedInsurer = [insur]
+                              agreedInsurer = insert insur empty
                               claimAgainstParty = Some atFaultParty
               return (Right c)            
         else 
           do
-          if isNone(elemIndex(insur) agreedInsurer) then
-            do 
-            let myagreedInsurer = sort (insur :: agreedInsurer)
-
-            a <- create this with agreedInsurer = myagreedInsurer
-
-            if (myagreedInsurer == involvedInsurer) then
-              do
-              let Some index = findIndex(\i -> i.insurer ==  fromSome claimAgainstParty) facts
-
-              b <- create ClaimSettlementRequest 
-                              with 
-                                facts = facts
-                                atFaultPair= (atFaultParty, fromSome (facts !! index).paymentParty )
-                                claimInsurance = this.claimInsurance 
-                                customer=this.customer
-                                repairer = repairer                                     
-              return (Left b)
+            if (member insur agreedInsurer) then
+              do 
+                a <- create this with agreedInsurer = agreedInsurer
+                return (Right a)
             else
-              do          
-              return (Right a)
-          else 
-              do          
-              assertMsg "insurer already agreed " (1==2)
-              c <- create this with agreedInsurer = sort (insur :: agreedInsurer)
-              return (Right c)
+              do
+                z <- create this with agreedInsurer = insert insur agreedInsurer
+                if (insert insur agreedInsurer == involvedInsurer) then
+                    do
+                      let Some (fact, _) = find(\i -> (fst i).insurer ==  fromSome claimAgainstParty) factsAndCost
+
+                      b <- create ClaimSettlementRequest 
+                                      with 
+                                        factsAndCost = factsAndCost
+                                        atFaultPair= (atFaultParty, fromSome fact.paymentParty )
+                                        claimInsurance = this.claimInsurance 
+                                        customer=this.customer
+                                        repairer = repairer                                     
+                      return (Left b)
+                else
+                    do          
+                      return (Right z)
 
 
 
 template ClaimSettlementRequest
   with 
-    facts : [Fact]
+    factsAndCost : [(Fact, Numeric 2)]
     atFaultPair : (Party, Party)
     claimInsurance: Party
     customer: Party
@@ -293,14 +277,13 @@ template ClaimSettlementRequest
         controller fst atFaultPair
         do          
           -- find the access amount
-          let Some index = findIndex (\i -> i.insurer == claimInsurance) facts
-          let fact = facts !! index
+          let Some (fact,cost) = find (\i -> (fst i).insurer == claimInsurance) factsAndCost
 
           i1 <- do create PaymentInstruction 
                     with  
                       issuer = fst atFaultPair
                       payTo = fromSome fact.paymentParty
-                      amount = fromEnum fact.excess
+                      amount =  cast (intToDecimal (fromEnum fact.excess)) : Numeric 2
                       customerName = show claimInsurance
                       comment = "Customer Excess"
                       paymentParty = snd atFaultPair
@@ -308,16 +291,16 @@ template ClaimSettlementRequest
           i2 <- mapA(\i ->    
                   do 
                     create PaymentInstruction with 
-                      payTo = fromSome i.paymentParty
-                      amount = i.repairCost
-                      customerName = show repairer <> " - " <>show i.insurer
+                      payTo = fromSome (fst i).paymentParty
+                      amount = (snd i)
+                      customerName = show repairer <> " - " <>show (fst i).insurer
                       issuer = fst atFaultPair
-                      comment = "Repair cost for " <> show i.insurer 
+                      comment = "Repair cost for " <> show (fst i).insurer 
                       paymentParty = snd atFaultPair
 
-                  ) facts
+                  ) factsAndCost
 
-          let involvedParties:[Party] = concat (mapA(\i -> [i.insurer,fromSome i.paymentParty] ) facts)
+          let involvedParties:[Party] = concat (mapA(\i -> [(fst i).insurer,fromSome (fst i).paymentParty] ) factsAndCost)
           create ClaimSettlement with 
                         claimSettlementRequest = this
                         settled = Settled
@@ -360,7 +343,7 @@ template InsurancePayment
     from: Party
     to: Party
     payerName: Text
-    amount: Int
+    amount: Numeric 2
   where
     signatory to
     observer from
@@ -370,7 +353,7 @@ template PaymentInstruction
     issuer: Party
     payTo: Party
     customerName: Text
-    amount: Int
+    amount: Numeric 2
     paymentParty : Party
     comment: Text
   where

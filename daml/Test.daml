@@ -1,3 +1,6 @@
+-- Copyright (c) 2022 ASX Operations Pty Ltd. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
 module Test
 where
 
@@ -72,42 +75,44 @@ test1 = script do
   _claim2 <- submit ins_claim_B 
           do exerciseCmd _claim AddFact 
               with 
-                insurer = ins_claim_B
-                rego = "BBB001"
-                excess = Excess500
-                name= "Bob Brown" 
-                location = "SYDNEY" 
-                description="I hit a car in front of me"
-                paymentParty =  ins_pay_B
+                fact = Fact with
+                  insurer = ins_claim_B
+                  rego = "BBB001"
+                  excess = Excess500
+                  name= "Bob Brown" 
+                  location = "SYDNEY" 
+                  description="I hit a car in front of me"
+                  paymentParty = Some ins_pay_B
 
   _claim3 <- submit ins_claim_C 
           do exerciseCmd _claim2 AddFact 
               with 
-                insurer = ins_claim_C 
-                rego = "CCC001" 
-                excess = Excess1200 
-                name= "Charle" 
-                location = "SYDNEY" 
-                description="A car with Rego plate BBB001 scrtached my side door" 
-                paymentParty =  ins_pay_C
+                fact = Fact with
+                  insurer = ins_claim_C 
+                  rego = "CCC001" 
+                  excess = Excess1200 
+                  name= "Charle" 
+                  location = "SYDNEY" 
+                  description="A car with Rego plate BBB001 scrtached my side door" 
+                  paymentParty = Some ins_pay_C
 
 -- repairer add costs for the insurance companies 
   _claim11 <- submit repairer 
           do exerciseCmd _claim3 AddCost 
               with 
-                cost = 2000
+                cost = 2000.00
                 ins = ins_claim_A
 
   _claim12 <- submit repairer 
           do exerciseCmd _claim11 AddCost 
               with 
-                cost = 1000
+                cost = 1000.00
                 ins = ins_claim_B
 
   _claim13 <- submit repairer 
           do exerciseCmd _claim12 AddCost 
               with 
-                cost = 500
+                cost = 500.00
                 ins = ins_claim_C
 
   
@@ -135,7 +140,6 @@ test1 = script do
                                                                           atFaultParty = ins_claim_B
                       case _claimSettlementRequest of 
                         Left a -> do 
-
                           -- Payment instruction created
                           _claimSettlement <- submit ins_claim_B do exerciseCmd a AcceptClaimSettlementRequest 
                                                                         
@@ -143,7 +147,7 @@ test1 = script do
                           pure()                         
                         
                         Right b -> do
-                          assert (False)
+                          assertMsg "All parties agreed and AcceptClaimSettlementRequest should be created" (False) 
                           pure()
 
     -- with the payment instruction, other insurance company can now accept it and get payment
@@ -153,7 +157,7 @@ test1 = script do
 
   Some payment <- queryContractId @InsurancePayment ins_pay_C _payment 
 
-  assert (payment.amount == 500)
+  assert (payment.amount == 500.00)
   
   pure()
                           
@@ -218,42 +222,44 @@ test2 = script do
   _claim2 <- submit ins_claim_B 
           do exerciseCmd _claim AddFact 
               with 
-                insurer = ins_claim_B
-                rego = "BBB001"
-                excess = Excess500
-                name= "Bob Brown" 
-                location = "SYDNEY" 
-                description="I hit a car in front of me"
-                paymentParty =  ins_pay_B
+                fact = Fact with
+                    insurer = ins_claim_B
+                    rego = "BBB001"
+                    excess = Excess500
+                    name= "Bob Brown" 
+                    location = "SYDNEY" 
+                    description="I hit a car in front of me"
+                    paymentParty = Some ins_pay_B
 
   _claim3 <- submit ins_claim_C 
           do exerciseCmd _claim2 AddFact 
               with 
-                insurer = ins_claim_C 
-                rego = "CCC001" 
-                excess = Excess1200 
-                name= "Charle" 
-                location = "SYDNEY" 
-                description="A car with Rego plate BBB001 scrtached my side door" 
-                paymentParty =  ins_pay_C
+                fact = Fact with
+                    insurer = ins_claim_C 
+                    rego = "CCC001" 
+                    excess = Excess1200 
+                    name= "Charle" 
+                    location = "SYDNEY" 
+                    description="A car with Rego plate BBB001 scrtached my side door" 
+                    paymentParty = Some ins_pay_C
 
 -- repairer add costs for the insurance companies 
   _claim11 <- submit repairer 
           do exerciseCmd _claim3 AddCost 
               with 
-                cost = 2000
+                cost = 2000.00
                 ins = ins_claim_A
 
   _claim12 <- submit repairer 
           do exerciseCmd _claim11 AddCost 
               with 
-                cost = 1000
+                cost = 1000.00
                 ins = ins_claim_B
 
   _claim13 <- submit repairer 
           do exerciseCmd _claim12 AddCost 
               with 
-                cost = 500
+                cost = 500.00
                 ins = ins_claim_C
 
 

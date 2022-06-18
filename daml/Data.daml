@@ -1,3 +1,6 @@
+-- Copyright (c) 2022 ASX Operations Pty Ltd. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
 module Data
 where
 
@@ -20,7 +23,7 @@ data ExcessLevel = NA |Excess500 | Excess1000 | Excess1200 deriving (Eq, Show)
 data SettlementLevel = Settled  | Paid deriving (Eq, Show)
 
 instance Enum ExcessLevel where
-  fromEnum NA = 0    
+  fromEnum NA = 0
   fromEnum Excess500 = 500
   fromEnum Excess1000 = 1000
   fromEnum Excess1200 = 1200
@@ -29,7 +32,6 @@ instance Enum ExcessLevel where
   toEnum 1000 = Excess1000
   toEnum 1200 = Excess1200
   toEnum _ = Excess1200
-
 
 data Fact = Fact
   with 
@@ -40,7 +42,6 @@ data Fact = Fact
     excess : ExcessLevel
     location: Text
     description: Text
-    repairCost: Int
   deriving (Eq, Show)
 
 
