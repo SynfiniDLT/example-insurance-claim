@@ -1,8 +1,7 @@
 -- Copyright (c) 2022 ASX Operations Pty Ltd. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
-module Data
-where
+module Data where
 
 data CustomerDetails = CustomerDetails
   with
@@ -20,7 +19,7 @@ data VehicalDetails = VehicalDetails
 
 data ExcessLevel = NA |Excess500 | Excess1000 | Excess1200 deriving (Eq, Show)
 
-data SettlementLevel = Settled  | Paid deriving (Eq, Show)
+data SettlementLevel = Settled | Paid deriving (Eq, Show)
 
 instance Enum ExcessLevel where
   fromEnum NA = 0

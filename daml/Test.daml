@@ -1,8 +1,7 @@
 -- Copyright (c) 2022 ASX Operations Pty Ltd. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
-module Test
-where
+module Test where
 
 --------------------------------------------------------------------------------
 
@@ -42,27 +41,25 @@ test1 = script do
           do exerciseCmd _customer RequestPolicy 
               with 
                 insurer = ins_claim_A
-                startDate =  (date 2019 Oct 1)
-                endDate =  (date 2020 Oct 1) 
-                excess= Excess500
+                startDate = (date 2019 Oct 1)
+                endDate = (date 2020 Oct 1) 
+                excess = Excess500
                 carDetails = VehicalDetails with rego = "AAA001", model="Mazda 3", year = 2020
 
   _policy <- submit ins_claim_A 
           do exerciseCmd _policyRequest ApprovePolicy 
               with 
-                policyID = "POL001"
+                policyId = "POL001"
                 paymentParty = ins_pay_A
-
-  
 
 -- customer submit a claim
   _requestClaim <- submit cust 
           do exerciseCmd _customer LodgeClaim 
               with 
                 policy = _policy
-                myRego="AAA001"
-                location="SYDNEY"
-                description="I was hit from behind"
+                myRego = "AAA001"
+                location = "SYDNEY"
+                description = "I was hit from behind"
                 otherDrivers = [(ClaimFact with insurer = ins_claim_B, rego = "BBB001", name= "Bob"), ClaimFact with insurer = ins_claim_C, rego = "ABC002", name= "Bruce"]
 
 -- insurance company claim department accepted the claim
@@ -75,26 +72,28 @@ test1 = script do
   _claim2 <- submit ins_claim_B 
           do exerciseCmd _claim AddFact 
               with 
-                fact = Fact with
-                  insurer = ins_claim_B
-                  rego = "BBB001"
-                  excess = Excess500
-                  name= "Bob Brown" 
-                  location = "SYDNEY" 
-                  description="I hit a car in front of me"
-                  paymentParty = Some ins_pay_B
+                fact = Fact 
+                  with
+                    insurer = ins_claim_B
+                    rego = "BBB001"
+                    excess = Excess500
+                    name= "Bob Brown" 
+                    location = "SYDNEY" 
+                    description = "I hit a car in front of me"
+                    paymentParty = Some ins_pay_B
 
   _claim3 <- submit ins_claim_C 
           do exerciseCmd _claim2 AddFact 
               with 
-                fact = Fact with
-                  insurer = ins_claim_C 
-                  rego = "CCC001" 
-                  excess = Excess1200 
-                  name= "Charle" 
-                  location = "SYDNEY" 
-                  description="A car with Rego plate BBB001 scrtached my side door" 
-                  paymentParty = Some ins_pay_C
+                fact = Fact 
+                  with
+                    insurer = ins_claim_C 
+                    rego = "CCC001" 
+                    excess = Excess1200 
+                    name = "Charle" 
+                    location = "SYDNEY" 
+                    description = "A car with Rego plate BBB001 scrtached my side door" 
+                    paymentParty = Some ins_pay_C
 
 -- repairer add costs for the insurance companies 
   _claim11 <- submit repairer 
@@ -118,10 +117,11 @@ test1 = script do
   
 -- insurance company agrees on who should pay for the cost i.e. whose is at fault 
 -- in this example, everyone agree it is Insurance Company B's customer at fault
-  _claim21 <- submit ins_claim_A do exerciseCmd _claim13 AgreeOnWhoToPay 
-                                      with 
-                                        insur = ins_claim_A
-                                        atFaultParty = ins_claim_B
+  _claim21 <- submit ins_claim_A 
+          do exerciseCmd _claim13 AgreeOnWhoToPay 
+              with 
+                insur = ins_claim_A
+                atFaultParty = ins_claim_B
 
   case _claim21 of
     Left a -> do assert (False) 
@@ -141,13 +141,11 @@ test1 = script do
                       case _claimSettlementRequest of 
                         Left a -> do 
                           -- Payment instruction created
-                          _claimSettlement <- submit ins_claim_B do exerciseCmd a AcceptClaimSettlementRequest 
-                                                                        
-                          
-                          pure()                         
+                          _claimSettlement <- submit ins_claim_B do exerciseCmd a AcceptClaimSettlementRequest
+                          pure()
                         
                         Right b -> do
-                          assertMsg "All parties agreed and AcceptClaimSettlementRequest should be created" (False) 
+                          assertMsg "All parties agreed and AcceptClaimSettlementRequest should be created" (False)
                           pure()
 
     -- with the payment instruction, other insurance company can now accept it and get payment
@@ -164,8 +162,7 @@ test1 = script do
 test2 : Script ()
 test2 = script do 
  
--- setup parties 
-
+  -- setup parties 
   cust <- allocatePartyWithHint "Customer" (PartyIdHint "Customer")
   ins_claim_A <- allocatePartyWithHint "Ins_Claim_A" (PartyIdHint "Ins_Claim_A")
   ins_claim_B <- allocatePartyWithHint "Ins_Claim_B" (PartyIdHint "Ins_Claim_B")
@@ -177,40 +174,39 @@ test2 = script do
 
   repairer <- allocatePartyWithHint "Repairer"(PartyIdHint "Repairer")
 
--- create customer and policy
+  -- create customer and policy
 
   _customer <- submit cust 
           do createCmd Customer 
               with 
                 customer = cust
-                customerDetails = CustomerDetails with customerID = "CUST001", fullName = "John Smith", address ="20 Bridger Street"
-
+                customerDetails = CustomerDetails with customerID = "CUST001", fullName = "John Smith", address = "20 Bridger Street"
 
   _policyRequest <- submit cust 
           do exerciseCmd _customer RequestPolicy 
               with 
                 insurer = ins_claim_A
-                startDate =  (date 2019 Oct 1)
-                endDate =  (date 2020 Oct 1) 
+                startDate = (date 2019 Oct 1)
+                endDate = (date 2020 Oct 1) 
                 excess= Excess500
-                carDetails = VehicalDetails with rego = "AAA001", model="Mazda 3", year = 2020
+                carDetails = VehicalDetails with rego = "AAA001", model = "Mazda 3", year = 2020
 
   _policy <- submit ins_claim_A 
           do exerciseCmd _policyRequest ApprovePolicy 
               with 
-                policyID = "POL001"
+                policyId = "POL001"
                 paymentParty = ins_pay_A
-
  
 -- customer submit a claim
   _requestClaim <- submit cust 
           do exerciseCmd _customer LodgeClaim 
               with 
                 policy = _policy
-                myRego="AAA001"
-                location="SYDNEY"
-                description="I was hit from behind"
-                otherDrivers = [(ClaimFact with insurer = ins_claim_B, rego = "BBB001", name= "Bob"), ClaimFact with insurer = ins_claim_C, rego = "ABC002", name= "Bruce"]
+                myRego = "AAA001"
+                location = "SYDNEY"
+                description = "I was hit from behind"
+                otherDrivers = [(ClaimFact with insurer = ins_claim_B, rego = "BBB001", name = "Bob"), 
+                                  ClaimFact with insurer = ins_claim_C, rego = "ABC002", name = "Bruce"]
 
 -- insurance company claim department accepted the claim
   _claim <- submit ins_claim_A 
@@ -222,25 +218,27 @@ test2 = script do
   _claim2 <- submit ins_claim_B 
           do exerciseCmd _claim AddFact 
               with 
-                fact = Fact with
+                fact = Fact
+                  with
                     insurer = ins_claim_B
                     rego = "BBB001"
                     excess = Excess500
-                    name= "Bob Brown" 
+                    name = "Bob Brown" 
                     location = "SYDNEY" 
-                    description="I hit a car in front of me"
+                    description = "I hit a car in front of me"
                     paymentParty = Some ins_pay_B
 
   _claim3 <- submit ins_claim_C 
           do exerciseCmd _claim2 AddFact 
               with 
-                fact = Fact with
+                fact = Fact 
+                  with
                     insurer = ins_claim_C 
                     rego = "CCC001" 
                     excess = Excess1200 
-                    name= "Charle" 
+                    name = "Charle" 
                     location = "SYDNEY" 
-                    description="A car with Rego plate BBB001 scrtached my side door" 
+                    description = "A car with Rego plate BBB001 scrtached my side door" 
                     paymentParty = Some ins_pay_C
 
 -- repairer add costs for the insurance companies 
@@ -263,8 +261,6 @@ test2 = script do
                 ins = ins_claim_C
 
 
-
-  
 -- insurance company agrees on who should pay for the cost i.e. whose is at fault 
 -- in this example, everyone agree it is Insurance Company B's customer at fault
   _claim21 <- submit ins_claim_A do exerciseCmd _claim13 AgreeOnWhoToPay 
@@ -288,29 +284,4 @@ test2 = script do
                                                                         with 
                                                                           insur = ins_claim_C
                                                                           atFaultParty = ins_claim_A
-                          
                       pure()                         
-
-                          
-
-
-  
-
-
-  
-
-
-    
-
-
-
-
-  
-
-
-  
-
-
-    
-
-

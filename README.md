@@ -2,15 +2,15 @@
 
 ## Introduction
 
-This project is a showcase of using DAML smart contracts to build a multiparty workflow. It is based on a simplifed insurance claim use case. 
+This project is a showcase of using DAML smart contracts to build a multiparty workflow. It is based on a simplified insurance claim use case. 
 
 ## How to run this project
 
-Simplely run 
+Simply run 
 
 `daml start` 
 
-in root folder of the project. It will do the followings
+in root folder of the project. It will do the followings.
 
 1. Compile the code
 2. Create a Daml sandbox with the Daml packages and expose the grpc interface
@@ -40,16 +40,16 @@ Repairer | This represents all the repairers and all the insurance companies sha
 
 ## Workflow
 
-The below table descibes a workflow from insurance policy creation, customer claim to the final insurance payment. The sample workflow can be found script `Test1()` in [Test.daml](/daml/Test.daml)
+The below table describes a workflow from insurance policy creation, customer claim to the final insurance payment. The sample workflow can be found script `Test1()` in [Test.daml](/daml/Test.daml)
 
 Order | Acting Party | Choice | Description |
 ---------------------- | ---------------------- | ---------------------- | ---------------------- | 
-1|Customer | PolicyRequest | Customer submit a request to the insurane company to buy a policy | 
+1|Customer | PolicyRequest | Customer submit a request to the insurance company to buy a policy | 
 2|Ins_Claim_A | ApprovePolicy | Insurance company A accept the request and create the **Policy** contract | 
-3|Customer | LodgeClaim | Customer logdges a claim and a  **FNOLRequest** contract is created (FNOL: Fist Notice Of Loss) | 
+3|Customer | LodgeClaim | Customer lodges a claim and a **FNOLRequest** contract is created (FNOL: Fist Notice Of Loss) | 
 4|Ins_Claim_A | AcceptClaimRequest | The customer's insurer accepts the claim and creates **FNOL** contract| 
 5|Ins_Claim_B and Ins_Claim_C | AddFact | Involved insurance company B and C add their sides of story to the **FNOL** contract | 
-5|Repairer | AddCost | Add cost figures to **FNOL** contract for fixing cars insurred by company A, B and C | 
+5|Repairer | AddCost | Add cost figures to **FNOL** contract for fixing cars insured by company A, B and C | 
 6|Ins_Claim_A, Ins_Claim_B and Ins_Claim_C | AgreeOnWhotoPay | All involved insurance company must agree on who is at fault and cover the cost. When everyone agrees, a new contract **ClaimSettlementRequest** is created and assigned to the at fault party | 
 7|Ins_Claim_B | AcceptClaimSettlementRequest | Insurance company that at fault accepts the settlement request and this creates a new contract **ClaimSettlement**. The claim settlement is assigned to accounts department
 8|Ins_Pay_B | CreatePayment | The account department of the insurance company exercises the choice. It creates **PaymentInstruction** contracts and notify the payment receivers.

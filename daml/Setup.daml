@@ -1,8 +1,7 @@
 -- Copyright (c) 2022 ASX Operations Pty Ltd. All rights reserved.
 -- SPDX-License-Identifier: Apache-2.0
 
-module Setup
-where
+module Setup where
 
 --------------------------------------------------------------------------------
 
@@ -29,26 +28,22 @@ setup = script do
 -- create customer and policy
 
   _customer <- submit cust 
-          do createCmd Customer 
-              with 
-                customer = cust
-                customerDetails = CustomerDetails with customerID = "CUST001", fullName = "John Smith", address ="20 Bridger Street"
-
+    do createCmd Customer 
+        with 
+          customer = cust
+          customerDetails = CustomerDetails with customerID = "CUST001", fullName = "John Smith", address ="20 Bridger Street"
 
   _policyRequest <- submit cust 
-          do exerciseCmd _customer RequestPolicy 
-              with 
-                insurer = ins_claim_A
-                startDate =  (date 2019 Oct 1)
-                endDate =  (date 2020 Oct 1) 
-                excess= Excess500
-                carDetails = VehicalDetails with rego = "ASX005", model="BMW M3", year = 2020
+    do exerciseCmd _customer RequestPolicy 
+        with 
+          insurer = ins_claim_A
+          startDate = (date 2019 Oct 1)
+          endDate = (date 2020 Oct 1) 
+          excess= Excess500
+          carDetails = VehicalDetails with rego = "ASX005", model="BMW M3", year = 2020
 
   submit ins_claim_A 
-          do exerciseCmd _policyRequest ApprovePolicy 
-              with 
-                policyID = "POL001"
-                paymentParty = ins_pay_A
-
-
-  
+    do exerciseCmd _policyRequest ApprovePolicy 
+        with 
+          policyId = "POL001"
+          paymentParty = ins_pay_A
