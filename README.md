@@ -10,7 +10,7 @@ Simply run
 
 `daml start` 
 
-in root folder of the project. It will do the followings.
+in root folder of the project. It will do the following.
 
 1. Compile the code
 2. Create a Daml sandbox with the Daml packages and expose the grpc interface
@@ -40,7 +40,7 @@ Repairer | This represents all the repairers and all the insurance companies sha
 
 ## Workflow
 
-The below table describes a workflow from insurance policy creation, customer claim to the final insurance payment. The sample workflow can be found script `Test1()` in [Test.daml](/daml/Test.daml)
+The below table describes a workflow from insurance policy creation, customer claim to the final insurance payment. The sample workflow can be found script `test1` in [Test.daml](/daml/Test.daml)
 
 Order | Acting Party | Choice | Description |
 ---------------------- | ---------------------- | ---------------------- | ---------------------- | 

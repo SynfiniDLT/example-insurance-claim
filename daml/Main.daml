@@ -133,7 +133,10 @@ template Policy
   where
     signatory customer, insurer
     ensure endDate > startDate
-  
+
+    key (customer, insurer) : (Party, Party)
+    maintainer (key._1)
+
     choice Cancel : ()
       controller customer
       do return ()
@@ -258,7 +261,8 @@ template FNOL
                       b <- create ClaimSettlementRequest 
                             with 
                               factsAndCost = factsAndCost
-                              atFaultPair= (atFaultParty, fromSome fact.paymentParty )
+                              atFaultParty= atFaultParty
+                              atFaultPaymentParty = fromSome fact.paymentParty
                               claimInsurance = this.claimInsurance 
                               customer=this.customer
                               repairer = repairer
@@ -272,49 +276,50 @@ template FNOL
 template ClaimSettlementRequest
   with 
     factsAndCost : [(Fact, Numeric 2)]
-    atFaultPair : (Party, Party)
+    atFaultParty : Party
+    atFaultPaymentParty : Party
     claimInsurance: Party
     customer: Party
     repairer: Party
   where
       signatory claimInsurance
-      observer fst atFaultPair, snd atFaultPair
+      observer atFaultParty, atFaultPaymentParty
 
       choice AcceptClaimSettlementRequest : ContractId ClaimSettlement
-        controller fst atFaultPair
+        controller atFaultParty
         do          
           -- find the access amount
           let Some (fact,cost) = find (\i -> (fst i).insurer == claimInsurance) factsAndCost
 
-          i1 <- do create PaymentInstruction 
-                    with  
-                      issuer = fst atFaultPair
-                      payTo = fromSome fact.paymentParty
-                      amount = cast (intToDecimal (fromEnum fact.excess)) : Numeric 2
-                      customerName = show claimInsurance
-                      comment = "Customer Excess"
-                      paymentParty = snd atFaultPair
+          _customerAccessPI <- do create PaymentInstruction 
+                                    with  
+                                      issuer = atFaultParty
+                                      payTo = fromSome fact.paymentParty
+                                      amount = cast (intToDecimal (fromEnum fact.excess)) : Numeric 2
+                                      customerName = show claimInsurance
+                                      comment = "Customer Excess"
+                                      paymentParty = atFaultPaymentParty
 
-          i2 <- mapA(\i ->    
-                  do 
-                    create PaymentInstruction 
-                      with 
-                        payTo = fromSome (fst i).paymentParty
-                        amount = (snd i)
-                        customerName = show repairer <> " - " <>show (fst i).insurer
-                        issuer = fst atFaultPair
-                        comment = "Repair cost for " <> show (fst i).insurer 
-                        paymentParty = snd atFaultPair
-                  ) factsAndCost
+          _repairCostPI <- mapA(\i ->    
+                                do
+                                  create PaymentInstruction 
+                                    with 
+                                      payTo = fromSome (fst i).paymentParty
+                                      amount = (snd i)
+                                      customerName = show repairer <> " - " <>show (fst i).insurer
+                                      issuer = atFaultParty
+                                      comment = "Repair cost for " <> show (fst i).insurer 
+                                      paymentParty = atFaultPaymentParty
+                                ) factsAndCost
 
-          let involvedParties:[Party] = concat (mapA(\i -> [(fst i).insurer,fromSome (fst i).paymentParty] ) factsAndCost)
+          let involvedParties:[Party] = concatMap (\i -> [(fst i).insurer,fromSome (fst i).paymentParty]) factsAndCost
           create ClaimSettlement 
             with 
               claimSettlementRequest = this
               settled = Settled
               repairer = repairer
-              paymentParty = snd atFaultPair
-              invoices = i1::i2
+              paymentParty = atFaultPaymentParty
+              invoices = _customerAccessPI::_repairCostPI
               involedParties = fromList (customer :: involvedParties)
 
 
@@ -327,7 +332,7 @@ template ClaimSettlement
       involedParties : Set Party 
       invoices : [ContractId PaymentInstruction]
   where
-      signatory fst claimSettlementRequest.atFaultPair, claimSettlementRequest.claimInsurance
+      signatory claimSettlementRequest.atFaultParty, claimSettlementRequest.claimInsurance
       observer repairer, involedParties
 
       choice CreatePayment : ContractId ClaimSettlement
