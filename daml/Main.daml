@@ -9,10 +9,6 @@ import DA.Optional
 import DA.Text
 import Data
 import DA.Numeric
-
-import DA.Foldable
-  ( mapA_
-  )
 import DA.Set
 --------------------------------------------------------------------------------
 
@@ -198,6 +194,7 @@ template FNOL
           assertMsg "Unable to modify agreed claim" (agreedInsurer /= involvedInsurer)
           assertMsg "Invalid rego. Lenghth should be equal or less than 6 characters/digits" (DA.Text.length fact.rego <= 6)
           assertMsg "Payment party is required" (isSome fact.paymentParty)
+          assertMsg "Submittor is not an involved party" (member fact.insurer involvedInsurer)
 
           if isNone (find(\i -> (fst i).insurer == fact.insurer) factsAndCost) then 
             do
@@ -205,16 +202,7 @@ template FNOL
           else
             do
             create this with factsAndCost = map(\i -> if (fst i).insurer == fact.insurer 
-                                                      then (Fact 
-                                                            with 
-                                                              insurer = fact.insurer
-                                                              paymentParty = fact.paymentParty
-                                                              rego = fact.rego
-                                                              name = fact.name
-                                                              excess = fact.excess
-                                                              location = fact.location
-                                                              description = fact.description
-                                                          , snd i) 
+                                                      then (fact, snd i) 
                                                       else i ) factsAndCost, agreedInsurer=empty
     choice AddCost : ContractId FNOL 
       with 
@@ -294,6 +282,16 @@ template ClaimSettlementRequest
       choice AcceptClaimSettlementRequest : ContractId ClaimSettlement
         controller atFaultParty
         do
+
+          let involvedParties:[Party] = concatMap (\i -> [(fst i).insurer,fromSome (fst i).paymentParty]) factsAndCost
+          _settlementId <- create ClaimSettlement 
+                          with 
+                            claimSettlementRequest = this
+                            settled = Settled
+                            repairer = repairer
+                            paymentParty = atFaultPaymentParty
+                            involedParties = fromList (customer :: involvedParties)
+
           -- find the access amount
           let Some (fact,cost) = find (\i -> (fst i).insurer == claimInsurance) factsAndCost
 
@@ -305,6 +303,7 @@ template ClaimSettlementRequest
                                       customerName = show claimInsurance
                                       comment = "Customer Excess"
                                       paymentParty = atFaultPaymentParty
+                                      _settlementId = _settlementId
 
           _repairCostPI <- mapA(\i ->    
                                 do
@@ -316,17 +315,11 @@ template ClaimSettlementRequest
                                       issuer = atFaultParty
                                       comment = "Repair cost for " <> show (fst i).insurer 
                                       paymentParty = atFaultPaymentParty
+                                      _settlementId = _settlementId
                                 ) factsAndCost
 
-          let involvedParties:[Party] = concatMap (\i -> [(fst i).insurer,fromSome (fst i).paymentParty]) factsAndCost
-          create ClaimSettlement 
-            with 
-              claimSettlementRequest = this
-              settled = Settled
-              repairer = repairer
-              paymentParty = atFaultPaymentParty
-              invoices = _customerAccessPI::_repairCostPI
-              involedParties = fromList (customer :: involvedParties)
+          pure _settlementId
+          
 
 
 template ClaimSettlement
@@ -336,35 +329,19 @@ template ClaimSettlement
       repairer : Party
       paymentParty : Party
       involedParties : Set Party 
-      invoices : [ContractId PaymentInstruction]
   where
       signatory claimSettlementRequest.atFaultParty, claimSettlementRequest.claimInsurance
       observer repairer, involedParties
 
-      choice CreatePayment : ContractId ClaimSettlement
-        controller paymentParty
-        do
-          mapA_(\i -> 
-                      do 
-                        t <- fetch i 
-                        create InsurancePayment 
-                          with 
-                            to = t.payTo
-                            from = paymentParty
-                            amount = t.amount
-                            payerName = show paymentParty
-                        ) invoices
-
-          create this with settled = Paid
-
 template InsurancePayment
   with
+    issuer : Party
     from: Party
     to: Party
     payerName: Text
     amount: Numeric 2
   where
-    signatory to
+    signatory to, issuer
     observer from
 
 template PaymentInstruction
@@ -375,6 +352,7 @@ template PaymentInstruction
     amount: Numeric 2
     paymentParty : Party
     comment: Text
+    _settlementId : ContractId ClaimSettlement
   where
     signatory issuer
     observer payTo, paymentParty
@@ -382,8 +360,15 @@ template PaymentInstruction
     choice Accept : ContractId InsurancePayment
       controller payTo
       do
+
+        settlement <- fetch _settlementId
+
+        assertMsg "Issuer is not at falut party in the settlement" (settlement.claimSettlementRequest.atFaultParty == issuer)
+        assertMsg "Payer does not match with the settlement" (settlement.claimSettlementRequest.atFaultPaymentParty == paymentParty)
+
         create InsurancePayment 
           with 
+            issuer = issuer
             from = paymentParty
             to = payTo
             payerName = show paymentParty
