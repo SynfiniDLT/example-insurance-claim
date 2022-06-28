@@ -194,16 +194,17 @@ template FNOL
           assertMsg "Unable to modify agreed claim" (agreedInsurer /= involvedInsurer)
           assertMsg "Invalid rego. Lenghth should be equal or less than 6 characters/digits" (DA.Text.length fact.rego <= 6)
           assertMsg "Payment party is required" (isSome fact.paymentParty)
-          assertMsg "Submittor is not an involved party" (member fact.insurer involvedInsurer)
+          assertMsg "Submitter is not an involved party" (member fact.insurer involvedInsurer)
 
-          if isNone (find(\i -> (fst i).insurer == fact.insurer) factsAndCost) then 
+          if isNone (find(\(i, _) -> i.insurer == fact.insurer) factsAndCost) then 
             do
             create this with factsAndCost = (fact,0.00) :: this.factsAndCost, agreedInsurer=empty
           else
             do
-            create this with factsAndCost = map(\i -> if (fst i).insurer == fact.insurer 
-                                                      then (fact, snd i) 
-                                                      else i ) factsAndCost, agreedInsurer=empty
+            create this with factsAndCost = map(\(i, j) -> if (i.insurer == fact.insurer)
+                                                      then (fact, j) 
+                                                      else (i,j)) factsAndCost, 
+                                                  agreedInsurer = empty
     choice AddCost : ContractId FNOL 
       with 
         cost : Numeric 2
@@ -213,9 +214,9 @@ template FNOL
         assertMsg "Unable to modify agreed claim" (agreedInsurer /= involvedInsurer)
         assertMsg "Insurance company is not in the claim" (isSome (find(\(i, _) -> i.insurer == ins) factsAndCost))
 
-        let f = map(\i -> if ((fst i).insurer==ins) 
-                          then (fst i, cost) 
-                          else i ) this.factsAndCost
+        let f = map(\(i, j) -> if (i.insurer==ins) 
+                          then (i, cost) 
+                          else (i,j) ) this.factsAndCost
         create this with 
           factsAndCost = f
           agreedInsurer= empty
@@ -228,7 +229,7 @@ template FNOL
         do
         assertMsg "Unable to modify agreed claim" (agreedInsurer /= involvedInsurer)
         assertMsg ("Selected party " <> show atFaultParty <> "must from involved parties" <> show involvedInsurer) (member atFaultParty involvedInsurer)
-        assertMsg ("Payment party missing") (isNone (findIndex(\i -> isNone (fst i).paymentParty ) factsAndCost))
+        assertMsg ("Payment party missing") (isNone (findIndex(\(i, _) -> isNone i.paymentParty ) factsAndCost))
 
 
         if  (isNone claimAgainstParty || atFaultParty/= fromSome claimAgainstParty) then
@@ -250,7 +251,7 @@ template FNOL
                 z <- create this with agreedInsurer = insert insur agreedInsurer
                 if (insert insur agreedInsurer == involvedInsurer) then
                     do
-                      let Some (fact, _) = find(\i -> (fst i).insurer == fromSome claimAgainstParty) factsAndCost
+                      let Some (fact, _) = find(\(i, _) -> i.insurer == fromSome claimAgainstParty) factsAndCost
 
                       b <- create ClaimSettlementRequest 
                             with 
@@ -283,39 +284,38 @@ template ClaimSettlementRequest
         controller atFaultParty
         do
 
-          let involvedParties:[Party] = concatMap (\i -> [(fst i).insurer,fromSome (fst i).paymentParty]) factsAndCost
+          let involvedParties:[Party] = concatMap (\(i, _) -> [i.insurer,fromSome i.paymentParty]) factsAndCost
           _settlementId <- create ClaimSettlement 
-                          with 
+                            with 
                             claimSettlementRequest = this
                             settled = Settled
                             repairer = repairer
                             paymentParty = atFaultPaymentParty
                             involedParties = fromList (customer :: involvedParties)
 
-          -- find the access amount
-          let Some (fact,cost) = find (\i -> (fst i).insurer == claimInsurance) factsAndCost
+          -- find the customer exccess amount
+          let Some (fact,cost) = find (\(i, _) -> i.insurer == claimInsurance) factsAndCost
 
           _customerAccessPI <- do create PaymentInstruction 
                                     with  
-                                      issuer = atFaultParty
-                                      payTo = fromSome fact.paymentParty
-                                      amount = cast (intToDecimal (fromEnum fact.excess)) : Numeric 2
-                                      customerName = show claimInsurance
-                                      comment = "Customer Excess"
-                                      paymentParty = atFaultPaymentParty
-                                      _settlementId = _settlementId
+                                    issuer = atFaultParty
+                                    payTo = fromSome fact.paymentParty
+                                    amount = cast (intToDecimal (fromEnum fact.excess)) : Numeric 2
+                                    customerName = show claimInsurance
+                                    comment = "Customer Excess"
+                                    paymentParty = atFaultPaymentParty
+                                    _settlementId = _settlementId
 
-          _repairCostPI <- mapA(\i ->    
-                                do
+          _repairCostPI <- mapA(\(i, j) -> do
                                   create PaymentInstruction 
                                     with 
-                                      payTo = fromSome (fst i).paymentParty
-                                      amount = (snd i)
-                                      customerName = show repairer <> " - " <>show (fst i).insurer
-                                      issuer = atFaultParty
-                                      comment = "Repair cost for " <> show (fst i).insurer 
-                                      paymentParty = atFaultPaymentParty
-                                      _settlementId = _settlementId
+                                    payTo = fromSome i.paymentParty
+                                    amount = j
+                                    customerName = show repairer <> " - " <>show i.insurer
+                                    issuer = atFaultParty
+                                    comment = "Repair cost for " <> show i.insurer 
+                                    paymentParty = atFaultPaymentParty
+                                    _settlementId = _settlementId
                                 ) factsAndCost
 
           pure _settlementId
@@ -363,8 +363,11 @@ template PaymentInstruction
 
         settlement <- fetch _settlementId
 
-        assertMsg "Issuer is not at falut party in the settlement" (settlement.claimSettlementRequest.atFaultParty == issuer)
+        assertMsg "Issuer is not at fault party in the settlement" (settlement.claimSettlementRequest.atFaultParty == issuer)
         assertMsg "Payer does not match with the settlement" (settlement.claimSettlementRequest.atFaultPaymentParty == paymentParty)
+
+        -- Below code used show paymentParty to display the payer's name. This is because there is no template defined to represent insurance company in this POC.
+        -- Plan to create insurance company template in the next version to hold insurance company's details
 
         create InsurancePayment 
           with 
