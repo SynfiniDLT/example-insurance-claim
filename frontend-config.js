@@ -94,10 +94,10 @@ claims = {
     columns: [
         createColumn("id", "ContractId", x => x.id, 5),
         createColumn("policyID", "Policy ID", x => x.template.id.includes(":FNOLRequest@") ? x.argument.fields[1].value.value : x.argument.fields[2].value.value, 5),
-        createColumn("InvolvedInsurer", "InvolvedInsurer", x => x.template.id.includes(":FNOLRequest@") ? x.argument.fields[2].value.value.map(item =>  item.fields[0].value.value ).join(";") : x.argument.fields[5].value.value.map(item =>  item.fields[0].value.value ).join(";"),100),
+        createColumn("InvolvedInsurer", "InvolvedInsurer", x => x.template.id.includes(":FNOLRequest@") ? x.argument.fields[2].value.value.map(item =>  item.fields[0].value.value ).join(";") : JSON.stringify(x.argument.fields[4].value.fields[0].value.value.map(item => item.key.value)).replace(/['"]+/g, ''), 100),
         createColumn("claimAgainst", "ClaimAgainst", x => x.template.id.includes(":FNOLRequest@")  ? "N/A" : x.argument.fields[7].value.value ===null ? "" : x.argument.fields[7].value.value.value, 20),
-        createColumn("AgreedInsurer", "AgreedInsurer", x => x.template.id.includes(":FNOLRequest@") ? "N/A"  : x.argument.fields[6].value.value.map(item =>  item.value ).join(";"), 10),
-        createColumn("TotalCost", "TotalCost", x => x.template.id.includes(":FNOLRequest@") ? "$0" : "$ " +  x.argument.fields[5].value.value.map(item =>  item.fields[7].value.value).reduce((a,b) => Number(a) + Number(b),0), 5),
+        createColumn("AgreedInsurer", "AgreedInsurer", x => x.template.id.includes(":FNOLRequest@") ? "N/A"  : JSON.stringify(x.argument.fields[6].value.fields[0].value.value.map(item => item.key.value)).replace(/['"]+/g, ''), 10),
+        createColumn("TotalCost", "TotalCost", x => x.template.id.includes(":FNOLRequest@") ? "$0" : "$ " +  x.argument.fields[5].value.value.map(item =>  item.fields[1].value.value).reduce((a,b) => Number(a) + Number(b),0), 5),
     ]
 },
 
@@ -107,10 +107,10 @@ settlement = {
     source: { type: 'contracts', filter: [ { field: "template.id", value: "ClaimSettlement" }], search: "", sort: [ { field: "id", direction: "ASCENDING" } ] },
     columns: [
         createColumn("id", "ContractId", x => x.id, 15),
-        createColumn("atFaultParty", "atFaultParty",  x => x.template.id.includes(":ClaimSettlementRequest@") ? JSON.stringify(x.argument.fields[1].value.fields[0].value.value).replace(/['"]+/g, '') :  JSON.stringify(x.argument.fields[0].value.fields[1].value.fields[0].value.value).replace(/['"]+/g, ''), 10),
+        createColumn("atFaultParty", "atFaultParty",  x => x.template.id.includes(":ClaimSettlementRequest@") ? JSON.stringify(x.argument.fields[1].value.value).replace(/['"]+/g, '') :  JSON.stringify(x.argument.fields[0].value.fields[1].value.value).replace(/['"]+/g, ''), 10),
         createColumn("claimInsurer", "ClaimInsurer", x => x.template.id.includes(":ClaimSettlementRequest@") ?  x.argument.fields[2].value.value : x.argument.fields[0].value.fields[2].value.value, 10),
-        createColumn("InvoledParties", "InvoledParties", x => x.template.id.includes(":ClaimSettlementRequest@") ? x.argument.fields[0].value.value.map(item =>  item.fields[0].value.value).join(";") : JSON.stringify(x.argument.fields[4].value.fields[0].value.value.map(item => item.key.value)).replace(/['"]+/g, ''), 30),
-        createColumn("TotalCost", "TotalCost", x => x.template.id.includes(":ClaimSettlementRequest@") ? "$ " + x.argument.fields[0].value.value.map(item =>  item.fields[7].value.value).reduce((a,b) => Number(a) + Number(b),0) : "$ " +  x.argument.fields[0].value.fields[0].value.value.map(item =>  item.fields[7].value.value).reduce((a,b) => Number(a) + Number(b),0), 5),
+        createColumn("InvoledParties", "InvoledParties", x => x.template.id.includes(":ClaimSettlementRequest@") ? JSON.stringify(x.argument.fields[0].value.value.map(item => item.fields[0].value.fields[0].value.value)).replace(/['"]+/g, '') : JSON.stringify(x.argument.fields[4].value.fields[0].value.value.map(item => item.key.value)).replace(/['"]+/g, ''), 30),
+        createColumn("TotalCost", "TotalCost", x => x.template.id.includes(":ClaimSettlementRequest@") ? "$ " +x.argument.fields[0].value.value.map(item => item.fields[1].value.value).reduce((a,b) => Number(a) + Number(b),0): "$ " +  x.argument.fields[0].value.fields[0].value.value.map(item => item.fields[1].value.value).reduce((a,b) => Number(a) + Number(b),0), 5),
     ]
 },
 
@@ -152,8 +152,6 @@ export function customViews(userId, party, role){
         policies: policies,
         claims: claims,
         settlement : settlement,
-        invoices: invoices,
-        payments: payments
     } :
     party == "Repairer" ?
     { 
